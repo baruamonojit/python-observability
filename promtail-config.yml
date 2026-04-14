@@ -1,0 +1,45 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        filters:
+          - name: label
+            values: ["logging=promtail"]   # only scrape containers that opt-in
+    relabel_configs:
+      # Use the container name as the "container" label
+      - source_labels: ["__meta_docker_container_name"]
+        regex: "/(.*)"
+        target_label: "container"
+      # Carry the compose service name
+      - source_labels: ["__meta_docker_container_label_com_docker_compose_service"]
+        target_label: "service"
+      # Keep the compose project name
+      - source_labels: ["__meta_docker_container_label_com_docker_compose_project"]
+        target_label: "compose_project"
+    pipeline_stages:
+      # Parse the JSON line emitted by the Python app
+      - json:
+          expressions:
+            level:     level
+            message:   message
+            timestamp: timestamp
+            pid:       pid
+            iteration: iteration
+      # Promote "level" to a Loki stream label for fast filtering
+      - labels:
+          level:
+      # Use the app's own timestamp as the log entry timestamp
+      - timestamp:
+          source: timestamp
+          format: RFC3339Nano

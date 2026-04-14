@@ -1,0 +1,73 @@
+{
+  "uid": "hello-world-logs",
+  "title": "Hello World — App Logs",
+  "tags": ["loki", "docker", "hello-world"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "logs",
+      "title": "All Log Lines",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 10 },
+      "datasource": { "type": "loki", "uid": "-- Grafana --" },
+      "options": {
+        "dedupStrategy": "none",
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki" },
+          "expr": "{service=\"hello-world-app\"}",
+          "queryType": "range"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "logs",
+      "title": "Errors & Warnings Only",
+      "gridPos": { "x": 0, "y": 10, "w": 24, "h": 8 },
+      "datasource": { "type": "loki", "uid": "-- Grafana --" },
+      "options": {
+        "dedupStrategy": "none",
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki" },
+          "expr": "{service=\"hello-world-app\"} | json | level =~ `ERROR|WARNING`",
+          "queryType": "range"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Log Rate by Level (per 30s)",
+      "gridPos": { "x": 0, "y": 18, "w": 24, "h": 8 },
+      "datasource": { "type": "loki", "uid": "-- Grafana --" },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki" },
+          "expr": "sum by (level) (rate({service=\"hello-world-app\"}[30s]))",
+          "queryType": "range"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,97 @@
+version: "3.9"
+networks:
+  plg:
+    driver: bridge
+
+services:
+
+  # ── 1. Hello-World Python app ────────────────────────────────
+  hello-world:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hello-world-app
+    restart: unless-stopped
+    # PYTHONUNBUFFERED ensures logs flush to STDOUT immediately
+    environment:
+      - PYTHONUNBUFFERED=1
+    # The "logging=promtail" label is what Promtail's docker_sd_configs
+    # filter targets — only labelled containers are scraped.
+    labels:
+      logging: "promtail"
+      com.docker.compose.service: "hello-world-app"
+    # Use the default json-file driver so docker logs works normally;
+    # Promtail reads directly from /var/run/docker.sock, not from files.
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - plg
+
+  # ── 2. Loki — log aggregation backend ───────────────────────
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: loki
+    user: "0"   # 👈 ADD THIS
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./config.yml:/etc/loki/config.yml:ro
+      - loki_data:/tmp/loki
+    command: -config.file=/etc/loki/config.yml
+    networks:
+      - plg
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── 3. Promtail — log collector / shipper ───────────────────
+  promtail:
+    image: grafana/promtail:3.0.0
+    container_name: promtail
+    restart: unless-stopped
+    ports:
+      - "9080:9080"
+    volumes:
+      - ./promtail-config.yml:/etc/promtail/config.yml:ro
+      # Mount the Docker socket so Promtail can discover containers
+      # and read their log streams directly.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      loki:
+        condition: service_healthy
+    networks:
+      - plg
+
+  # ── 4. Grafana — visualisation ───────────────────────────────
+  grafana:
+    image: grafana/grafana:11.0.0
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      # Skip the onboarding wizard on first launch
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+      - GF_FEATURE_TOGGLES_ENABLE=lokiQuerySplitting
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      loki:
+        condition: service_healthy
+    networks:
+      - plg
+
+volumes:
+  loki_data:
+  grafana_data:
